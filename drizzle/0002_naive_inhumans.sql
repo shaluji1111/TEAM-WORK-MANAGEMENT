@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `designation` text DEFAULT '' NOT NULL;

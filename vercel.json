@@ -1,0 +1,5 @@
+{
+  "framework": "nextjs",
+  "crons": [{ "path": "/api/cron/recurrences", "schedule": "0 0 * * *" }],
+  "functions": { "src/app/api/cron/recurrences/route.ts": { "maxDuration": 60 } }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.next-e2e/
+.test-db/
+.playwright-results/
+*.db
+*.db-*
+*.tsbuildinfo
+.env.local
+.env.*.local
+private-deployment/
+*.private.*

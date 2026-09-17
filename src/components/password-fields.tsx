@@ -1,0 +1,3 @@
+import { Field } from "./forms";
+import { Input } from "./ui/input";
+export function PasswordFields() { return <><Field label="Current password"><Input name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} /></Field><Field label="New password" hint="Use at least 10 characters. A longer, unique passphrase works well."><Input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} /></Field><Field label="Confirm new password"><Input name="confirmPassword" type="password" autoComplete="new-password" required minLength={10} maxLength={128} /></Field></>; }

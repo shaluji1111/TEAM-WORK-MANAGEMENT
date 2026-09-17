@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next-e2e/
+.env*
+!.env.example
+*.db
+*.db-*
+*.tsbuildinfo
+test-results/
+playwright-report/
+.vercel/
+.sites-runtime/
+.test-db/
+.playwright-results/
+private-deployment/
+*.private.*
