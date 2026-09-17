@@ -27,11 +27,16 @@ export function taskConditions(actor: AppUser, scope: "mine" | "team", filters: 
 }
 export async function taskList(actor: AppUser, scope: "mine" | "team", filters: Filters, now = Date.now()) {
   const where = taskConditions(actor, scope, filters, now);
-  const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(tasks).where(where);
-  const pages = Math.max(1, Math.ceil(total / 20));
-  const page = Math.min(pages, Math.max(1, Number.parseInt(filters.page || "1", 10) || 1));
-  const rows = await db.select({ task: tasks, name: user.name, username: user.username, active: user.active }).from(tasks).innerJoin(user, eq(tasks.assigneeId, user.id))
+  const requestedPage = Math.min(Math.floor(Number.MAX_SAFE_INTEGER / 20), Math.max(1, Number.parseInt(filters.page || "1", 10) || 1));
+  const fetchRows = (page: number) => db.select({ task: tasks, name: user.name, username: user.username, active: user.active }).from(tasks).innerJoin(user, eq(tasks.assigneeId, user.id))
     .where(where).orderBy(sql`CASE WHEN ${tasks.status} = 'completed' THEN 1 ELSE 0 END`, asc(tasks.dueAt), asc(tasks.id)).limit(20).offset((page - 1) * 20);
+  const [[{ total }], requestedRows] = await Promise.all([
+    db.select({ total: sql<number>`count(*)` }).from(tasks).where(where), fetchRows(requestedPage)
+  ]);
+  const pages = Math.max(1, Math.ceil(total / 20));
+  const page = Math.min(pages, requestedPage);
+  // Re-query only if a stale/deep link points beyond the last page.
+  const rows = page === requestedPage ? requestedRows : await fetchRows(page);
   return { rows, total, pages, page };
 }
 export type TaskListResult = Awaited<ReturnType<typeof taskList>>;
@@ -66,8 +71,10 @@ export async function memberSummary(actor: AppUser, filters: Filters = {}, now =
 export async function taskDetail(actor: AppUser, id: string, now = Date.now()) {
   const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
   if (!task || !canViewTask(actor, task, now)) return null;
-  const [assignee] = await db.select({ name: user.name, active: user.active, username: user.username }).from(user).where(eq(user.id, task.assigneeId));
-  const submitted = await db.select({ submission: submissions, author: user.name }).from(submissions).innerJoin(user, eq(user.id, submissions.authorId)).where(eq(submissions.taskId, id)).orderBy(desc(submissions.submittedAt));
-  const history = await db.select({ event: events, author: user.name }).from(events).leftJoin(user, eq(user.id, events.actorId)).where(eq(events.taskId, id)).orderBy(desc(events.createdAt));
+  const [[assignee], submitted, history] = await Promise.all([
+    db.select({ name: user.name, active: user.active, username: user.username }).from(user).where(eq(user.id, task.assigneeId)),
+    db.select({ submission: submissions, author: user.name }).from(submissions).innerJoin(user, eq(user.id, submissions.authorId)).where(eq(submissions.taskId, id)).orderBy(desc(submissions.submittedAt)),
+    db.select({ event: events, author: user.name }).from(events).leftJoin(user, eq(user.id, events.actorId)).where(eq(events.taskId, id)).orderBy(desc(events.createdAt))
+  ]);
   return { task, assignee, submitted, history };
 }

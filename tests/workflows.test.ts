@@ -19,7 +19,7 @@ const people = await import("@/lib/user-service");
 const { setupTeam } = await import("@/lib/team-setup");
 const recurring = await import("@/lib/series-service");
 const holidayService = await import("@/lib/holiday-service");
-const { runScheduler } = await import("@/lib/scheduler");
+const { runScheduler, catchUp } = await import("@/lib/scheduler");
 const queries = await import("@/lib/queries");
 const { getAuth } = await import("@/lib/auth");
 const authRoute = await import("@/app/api/auth/[...all]/route");
@@ -165,6 +165,8 @@ describe("task authorization and lifecycle", () => {
   it("paginates and counts filtered tasks consistently", async () => {
     for (let i = 0; i < 23; i++) await taskService.createTask(manager, { ...input(), title: `Weekly handover ${i}` }, now);
     expect((await queries.taskList(member, "mine", { page: "2" }, now)).rows).toHaveLength(3);
+    const beyondLastPage = await queries.taskList(member, "mine", { page: "999999999999999999999999" }, now);
+    expect(beyondLastPage.page).toBe(2); expect(beyondLastPage.rows).toHaveLength(3);
     expect((await queries.taskStats(member, "mine", {}, now)).pending).toBe(23);
     expect((await queries.taskList(member, "mine", { q: "nonexistent" }, now)).total).toBe(0);
   });
@@ -239,6 +241,22 @@ describe("accounts and sessions", () => {
   });
 });
 describe("recurrence persistence and recovery", () => {
+  it("keeps normal page reads free of scheduler writes, while recovering an expired horizon", async () => {
+    expect(await catchUp(now)).toBeNull();
+    await recurring.saveSeries(manager, ruleInput(), undefined, now);
+    const before = (await client.execute("select total_changes() as count")).rows[0].count;
+    expect(await catchUp(now)).toBeNull();
+    expect(await catchUp(now + 120_000)).toBeNull();
+    expect((await client.execute("select total_changes() as count")).rows[0].count).toBe(before);
+    expect((await db.select().from(scheduler))).toHaveLength(0);
+    const later = fromLocal("2026-10-01", "10:00");
+    expect(await catchUp(later)).toBeNull();
+    const [missed] = await db.select().from(tasks).where(eq(tasks.availableAt, fromLocal("2026-09-24", "09:00")));
+    expect(missed.dueAt).toBe(fromLocal("2026-09-26", "18:00"));
+    const count = (await db.select().from(tasks)).length;
+    expect(await catchUp(later)).toBeNull();
+    expect((await db.select().from(tasks))).toHaveLength(count);
+  });
   it("hides future tasks and creates each occurrence exactly once", async () => {
     const rule = await recurring.saveSeries(manager, ruleInput(), undefined, now);
     const total = (await db.select().from(tasks)).length;

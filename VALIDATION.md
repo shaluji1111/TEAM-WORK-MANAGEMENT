@@ -5,8 +5,8 @@ Verified locally on 17 September 2026 with Node.js 24.13.1 on Windows.
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | Passed |
-| `npm run test` | 30 tests passed across calendar, database, authorization, task, holiday and initial-account setup tests |
-| `npm run test:e2e` | 5 browser tests passed, including desktop and 390px mobile flows |
+| `npm run test` | 31 tests passed across calendar, database, authorization, task, holiday, pagination, recovery and initial-account setup tests |
+| Browser checks | All 6 scenarios passed: 5 existing workflows in development mode, plus sidebar navigation in production mode at desktop and 390px mobile widths |
 | `npm run build` | Production build passed |
 | `npm run db:generate` | No schema changes; checked-in migrations match the schema |
 | Dependency audit during installation | 0 reported vulnerabilities |
@@ -21,6 +21,8 @@ The initial-account update adds employee designations independently of permissio
 
 The provided production Turso database was then initialized and verified with nine real accounts (one HOD, two Managers and six Members). Stored names, JS IDs, designations, permissions, password hashes and first-login password-change flags matched the private roster. No demo tasks, schedules or holidays were inserted. Hosted migration execution passed after restricting the optional SQLite maintenance pragma to local databases.
 
-Most automated workflow checks use isolated local libSQL databases and test accounts. A Vercel deployment, scheduled Vercel cron execution and the real-member pilot have not yet been exercised. Follow README.md to configure separate preview/production databases and complete that rollout. Credentials and the real roster are kept outside this source repository.
+The navigation update was prompted by the live deployment running in `iad1` while its Turso database is in Mumbai. `vercel.json` now selects `bom1`. Server-rendered authentication is deduplicated within each request, task queries run concurrently, and normal navigation performs no scheduler writes when the prepared horizon is current. Recovery tests still produce missed occurrences with their original deadlines and no duplicates. An isolated production browser check held a navigation response to confirm visible pending feedback, then visited every sidebar destination on desktop and mobile. The production build and production login/session/cron/rate-limit smoke checks passed again.
+
+Most automated workflow checks use isolated local libSQL databases and test accounts. The live Vercel public login page has been checked; authenticated sidebar performance and scheduled Vercel cron execution still need observation in the deployed environment. Credentials and the real roster are kept outside this source repository.
 
 The source ZIP excludes local credentials, databases, installed dependencies, build output and generated test artifacts. Its demo credentials are intentionally public development fixtures; use the initial-HOD setup command with a fresh password for production.

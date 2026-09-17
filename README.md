@@ -118,7 +118,7 @@ For an existing installation, run `npm run db:migrate` before deploying this upd
 All calendar rules use **Asia/Kolkata**. Daily rules select weekdays; weekly rules select one weekday; monthly/yearly rules use a fixed calendar date, clamped to the month's last day when necessary. Each occurrence has a start time and a deadline offset in calendar days plus local time.
 
 - Each occurrence is a separate database task. It is generated up to seven days ahead but stays hidden until its start time. No minute-by-minute cron is needed.
-- The daily cron and authenticated task-page reads share a database lease, transactional generation cursor and unique `(series_id, available_at)` constraint. Retries do not duplicate occurrences. Reads normally run catch-up no more than once a minute.
+- The daily cron and authenticated task-page reads share a database lease, transactional generation cursor and unique `(series_id, available_at)` constraint. Retries do not duplicate occurrences. Page reads first check whether any active schedule has exhausted its prepared horizon. Only then do they wait for catch-up; normal navigation does not write scheduler state or regenerate every schedule.
 - Missed runs retain original occurrence dates and deadlines. Each series processes up to 366 calendar days per run to bound outage recovery. If more is needed, the management screen displays a catch-up message and subsequent refreshes continue the work.
 - Editing first catches up already-started work, preserves those tasks and regenerates unpublished future occurrences. An edit to one existing task does not change its series.
 - Pause discards only future unpublished occurrences, retaining started tasks. Resume skips the paused period. Deactivating an assignee pauses their schedules; reactivating the account does not automatically resume schedules.
@@ -133,6 +133,8 @@ All calendar rules use **Asia/Kolkata**. Daily rules select weekdays; weekly rul
 - Drizzle schema and checked-in SQL migrations; server-side libSQL queries work with local SQLite during development and remote Turso in deployment.
 - Business logic: `src/lib/*-service.ts`. Permission and lifecycle checks run inside database write transactions. Read queries scope data to the authenticated user.
 - UI mutations are server actions, not an unauthenticated REST API. The only route handlers are the restricted Better Auth handler and authenticated cron endpoint.
+- Vercel functions run in Mumbai (`bom1`), alongside the intended Turso `aws-ap-south-1` database. If you move the database, update `vercel.json` to a nearby function region and redeploy. A remote function region adds network latency to every database round trip.
+- Authentication is deduplicated with React `cache` within one render request only; sessions and account access remain checked afresh on the next request. Workspace routes stream a loading state, and navigation links provide pending feedback. Independent task queries run concurrently.
 
 ## Validation commands
 
@@ -144,6 +146,8 @@ npm run build
 ```
 
 Unit/integration tests use separate random databases under `.test-db/`. Browser tests start their own server on `127.0.0.1:3101` and their own database; they never reset your local or production data. On Windows they use installed Microsoft Edge; elsewhere install Playwright Chromium with `npx playwright install chromium` first. Port 3101 must be free.
+
+To check production navigation and prefetching, run `npm run build`, then set `E2E_PRODUCTION=1` in the test process environment and run `npm run test:e2e -- --grep "sidebar navigation"`. It uses the built app with a fresh, isolated test database.
 
 Tests cover ownership and role boundaries, temporary passwords, case-insensitive login, session revocation, evidence requirements, stale writes, late completion, reopening/resubmission, calendar edge cases, missed schedules, duplicates, future-task visibility, edits, pause/resume and deactivation. They also cover holiday privacy, overlapping days/halves, cancellations, management reversals, IST boundaries, theme persistence and desktop/mobile flows. Migration generation can be checked with `npm run db:generate`.
 

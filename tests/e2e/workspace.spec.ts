@@ -6,6 +6,41 @@ async function login(page: Page, jsId: string, secret = password) {
   await page.getByLabel("Password", { exact: true }).fill(secret); await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/my-tasks|change-password/);
 }
+test("sidebar navigation responds while waiting and works on desktop and mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await login(page, "JS1001");
+  await expect(page.getByRole("heading", { name: "My tasks", exact: true })).toBeVisible();
+  // Hold the actual navigation response to reproduce a slow network without
+  // relying on a timing threshold or slowing unrelated assets.
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let requested!: () => void;
+  const arrived = new Promise<void>(resolve => { requested = resolve; });
+  await page.route("**/people?*", async route => {
+    if (route.request().headers()["rsc"] && !route.request().headers()["next-router-prefetch"]) {
+      requested(); await held;
+    }
+    await route.continue();
+  });
+  try {
+    await page.getByRole("navigation", { name: "Main navigation", exact: true }).getByRole("link", { name: "People", exact: true }).click();
+    await arrived;
+    await expect(page.locator(".navigation-spinner:visible, .workspace-loading:visible").first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Main navigation", exact: true })).toBeVisible();
+  } finally { release(); }
+  await expect(page.getByRole("heading", { name: "People", exact: true })).toBeVisible();
+  await page.unroute("**/people?*");
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const nav = page.getByRole("navigation", { name: width === 390 ? "Mobile navigation" : "Main navigation", exact: true });
+    for (const label of ["Settings", "Holidays", "Recurring tasks", "Team overview", "My tasks", "People"]) {
+      await nav.getByRole("link", { name: label, exact: true }).click();
+      await expect(page.getByRole("heading", { name: label === "Settings" ? "Account settings" : label, exact: true })).toBeVisible();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+});
+
 test("desktop assignment, member submission, privacy and manager reopen", async ({ page, browser }) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 }); await login(page, "JS1001");

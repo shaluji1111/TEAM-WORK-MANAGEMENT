@@ -59,7 +59,18 @@ export async function runScheduler(now = Date.now(), force = false) {
     throw error;
   }
 }
-export async function catchUp() {
-  try { const result = await runScheduler(); return result.caughtUp ? null : "Older repeating tasks are still catching up. Refresh to continue."; }
+export async function catchUp(now = Date.now()) {
+  try {
+    // Creation and the daily cron prepare seven days ahead. Normal navigation
+    // needs only this read, not lease writes and a transaction for every series.
+    // If cron was missed long enough to leave a gap, finish recovery before the
+    // page reads tasks so original occurrence dates and deadlines stay correct.
+    const [behind] = await db.select({ id: series.id }).from(series)
+      .innerJoin(user, eq(user.id, series.assigneeId))
+      .where(and(eq(series.active, true), eq(user.active, true), lte(series.generatedThrough, now))).limit(1);
+    if (!behind) return null;
+    const result = await runScheduler(now);
+    return result.caughtUp ? null : "Older repeating tasks are still catching up. Refresh to continue.";
+  }
   catch { return "Repeating tasks could not be refreshed. Existing tasks are available; refresh to try again."; }
 }
